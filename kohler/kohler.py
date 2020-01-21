@@ -135,10 +135,10 @@ class Kohler:
 
         params = {
             "valve_num": valve_num,
-            "valve1_outlet": outlet1,
+            "valve1_outlet": valve1_outlet,
             "valve1_massage": valve1_massage,
             "valve1_temp": valve1_temp,
-            "valve2_outlet": outlet2,
+            "valve2_outlet": valve2_outlet,
             "valve2_massage": valve2_massage,
             "valve2_temp": valve2_temp
         }
