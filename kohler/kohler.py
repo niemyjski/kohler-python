@@ -14,6 +14,22 @@ class Kohler:
         url = f"{self._baseUrl}/bt_disconnect.cgi"
         return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
 
+    def checkUpdates(self):
+        url = f"{self._baseUrl}/check_updates.cgi"
+        return self.fetch(url)
+
+    def ftpStatus(self):
+        url = f"{self._baseUrl}/ftp_status.cgi"
+        return self.fetch(url)
+
+    def idInterface(self, index):
+        params = {
+            "index": index
+        }
+
+        url = f"{self._baseUrl}/id_interface.cgi"
+        return self.fetch(url, params)
+
     def languages(self):
         url = f"{self._baseUrl}/languages.cgi"
         return self.fetch(url)
@@ -61,6 +77,10 @@ class Kohler:
         url = f"{self._baseUrl}/music_on.cgi"
         return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
 
+    def powercleanCheck(self):
+        url = f"{self._baseUrl}/powerclean_check.cgi"
+        return self.fetch(url)
+
     def rainOff(self, value):
         url = f"{self._baseUrl}/rain_off.cgi"
         return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
@@ -75,14 +95,46 @@ class Kohler:
         url = f"{self._baseUrl}/rain_on.cgi"
         return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
 
-    def saveVariable(self, index, value):
+    def removeModule(self, module):
+        params = {
+            "module": module
+        }
+
+        url = f"{self._baseUrl}/remove_module.cgi"
+        return self.fetch(url, params)
+
+    def resetDefault(self):
+        url = f"{self._baseUrl}/reset_default.cgi"
+        return self.fetch(url)
+
+    def resetFactory(self):
+        url = f"{self._baseUrl}/reset_factory.cgi"
+        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+
+    def resetUsers(self):
+        url = f"{self._baseUrl}/reset_users.cgi"
+        return self.fetch(url)
+
+    def saveDT(self):
+        url = f"{self._baseUrl}/saveDT.cgi"
+        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+
+    def saveUI(self, index):
+        params = {
+            "index": index
+        }
+
+        url = f"{self._baseUrl}/saveUI.cgi"
+        return self.fetch(url, params)
+
+    def saveVariable(self, index, value, **kwargs):
         params = {
             "index": index,
             "value": value
         }
 
         url = f"{self._baseUrl}/save_variable.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, {**kwargs, **params}, CONTENT_TYPE_TEXT_PLAIN)
 
     def setDevice(self, value):
         url = f"{self._baseUrl}/set_device.cgi"
