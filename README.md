@@ -1,12 +1,14 @@
 # kohler-python
+
 Python library for talking to Kohler devices (DTV+)
 
-# Installation
-```
+## Installation
+
+```cmd
 pip3 install kohler
 ```
 
-# Usage
+## Usage
 
 ```python
 from kohler import Kohler
