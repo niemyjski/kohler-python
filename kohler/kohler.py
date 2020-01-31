@@ -199,8 +199,11 @@ class Kohler:
 
     def fetch(self, url, params=None, contentType=CONTENT_TYPE_JSON):
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=0.250)
         except ConnectionError as ex:
+            if len(ex.args) < 1:
+                raise
+
             #HACK: gist.github.com/niemyjski/6ba88dcdca7e76172c58530bac66eada
             responseText = ex.args[0].args[1].line
             if contentType == CONTENT_TYPE_JSON:
