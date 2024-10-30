@@ -197,7 +197,7 @@ class Kohler:
         url = f"{self._baseUrl}/quick_shower.cgi"
         return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
 
-    def fetch(self, url, params=None, contentType=CONTENT_TYPE_JSON,timeout=0.25):
+    def fetch(self, url, params=None, contentType=CONTENT_TYPE_JSON, timeout=0.25):
         try:
             response = requests.get(url, params=params, timeout=timeout)
         except ConnectionError as ex:
