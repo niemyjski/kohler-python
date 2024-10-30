@@ -83,7 +83,7 @@ class Kohler:
 
     def rainOff(self, value):
         url = f"{self._baseUrl}/rain_off.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def rainOn(self, mode, color, effect):
         # min: 0, max: 100, interval: 1
@@ -93,7 +93,7 @@ class Kohler:
             "effect": effect
         }
         url = f"{self._baseUrl}/rain_on.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def removeModule(self, module):
         params = {
@@ -142,7 +142,7 @@ class Kohler:
 
     def steamOff(self, value):
         url = f"{self._baseUrl}/steam_off.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def steamOn(self, temp=110, time=10):
         params = {
@@ -150,15 +150,15 @@ class Kohler:
             "time": time
         }
         url = f"{self._baseUrl}/steam_on.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def stopUser(self):
         url = f"{self._baseUrl}/stop_user.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def stopShower(self):
         url = f"{self._baseUrl}/stop_shower.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def startUser(self, user=1):
         params = {
@@ -166,7 +166,7 @@ class Kohler:
         }
 
         url = f"{self._baseUrl}/start_user.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
 
     def systemInfo(self):
         url = f"{self._baseUrl}/system_info.cgi"
@@ -195,11 +195,11 @@ class Kohler:
             "valve2_temp": valve2_temp
         }
         url = f"{self._baseUrl}/quick_shower.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
 
-    def fetch(self, url, params=None, contentType=CONTENT_TYPE_JSON):
+    def fetch(self, url, params=None, contentType=CONTENT_TYPE_JSON,timeout=0.25):
         try:
-            response = requests.get(url, params=params, timeout=0.250)
+            response = requests.get(url, params=params, timeout=timeout)
         except ConnectionError as ex:
             if len(ex.args) < 1:
                 raise
