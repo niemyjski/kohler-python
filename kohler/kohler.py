@@ -189,10 +189,10 @@ class Kohler:
             "valve_num": valve_num,
             "valve1_outlet": valve1_outlet,
             "valve1_massage": valve1_massage,
-            "valve1_temp": valve1_temp,
+            "valve1_temp": f"{int(valve1_temp)}.0",
             "valve2_outlet": valve2_outlet,
             "valve2_massage": valve2_massage,
-            "valve2_temp": valve2_temp
+            "valve2_temp": f"{int(valve2_temp)}.0"
         }
         url = f"{self._baseUrl}/quick_shower.cgi"
         return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
