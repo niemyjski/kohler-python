@@ -1,190 +1,217 @@
+"""Kohler DTV+ device control library."""
+
+from __future__ import annotations
+
+import asyncio
 import json
-import requests
-from requests.exceptions import ConnectionError
+import logging
+import urllib.parse
+from pathlib import Path
+from typing import Any
+
+__version__ = "0.1.0"
+
+_LOGGER = logging.getLogger(__name__)
 
 CONTENT_TYPE_JSON = "application/json"
 CONTENT_TYPE_TEXT_PLAIN = "text/plain"
 
 
+class KohlerError(Exception):
+    """Raised when a Kohler device communication error occurs."""
+
+
 class Kohler:
-    def __init__(self, kohlerHost):
-        self._baseUrl = f"http://{kohlerHost}"
+    """Asynchronous client for controlling Kohler DTV+ shower systems.
 
-    def btDisconnect(self):
-        url = f"{self._baseUrl}/bt_disconnect.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+    Args:
+        kohler_host: The IP address or hostname of the Kohler DTV+ device.
+        timeout: Default connection and read timeout in seconds.
+    """
 
-    def checkUpdates(self):
-        url = f"{self._baseUrl}/check_updates.cgi"
-        return self.fetch(url)
+    def __init__(self, kohler_host: str, timeout: float = 1.0) -> None:
+        self._host = kohler_host
+        self._base_url = f"http://{kohler_host}"
+        self.timeout = timeout
 
-    def ftpStatus(self):
-        url = f"{self._baseUrl}/ftp_status.cgi"
-        return self.fetch(url)
+    async def bt_disconnect(self) -> Any:
+        url = f"{self._base_url}/bt_disconnect.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def idInterface(self, index):
-        params = {
-            "index": index
-        }
+    async def check_updates(self) -> Any:
+        url = f"{self._base_url}/check_updates.cgi"
+        return await self._fetch(url)
 
-        url = f"{self._baseUrl}/id_interface.cgi"
-        return self.fetch(url, params)
+    async def controller_error_logs(self) -> Any:
+        url = f"{self._base_url}/cerror_logs.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def languages(self):
-        url = f"{self._baseUrl}/languages.cgi"
-        return self.fetch(url)
+    async def ftp_status(self) -> Any:
+        url = f"{self._base_url}/ftp_status.cgi"
+        return await self._fetch(url)
 
-    def lightOff(self, module):
-        params = {
-            "module": module  # light number
-        }
+    async def id_interface(self, index: int) -> Any:
+        params = {"index": index}
+        url = f"{self._base_url}/id_interface.cgi"
+        return await self._fetch(url, params)
 
-        url = f"{self._baseUrl}/light_off.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+    async def konnect_error_logs(self) -> Any:
+        url = f"{self._base_url}/kerror_logs.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def lightOn(self, module=1, intensity=100):
-        # min: 0, max: 100, interval: 1
-        params = {
-            "module": module,  # light number
-            "intensity": intensity
-        }
+    async def languages(self) -> Any:
+        url = f"{self._base_url}/languages.cgi"
+        return await self._fetch(url)
 
-        url = f"{self._baseUrl}/light_on.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+    async def light_off(self, module: int) -> Any:
+        params = {"module": module}
+        url = f"{self._base_url}/light_off.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def lightModule(self, module=2, intensity=100):
-        # min: 0, max: 100, interval: 1
-        params = {
-            "module": module,  # light number
-            "intensity": intensity
-        }
+    async def light_on(self, module: int = 1, intensity: int = 100) -> Any:
+        params = {"module": module, "intensity": intensity}
+        url = f"{self._base_url}/light_on.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-        url = f"{self._baseUrl}/light_module.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+    async def light_module(self, module: int = 2, intensity: int = 100) -> Any:
+        params = {"module": module, "intensity": intensity}
+        url = f"{self._base_url}/light_module.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def musicOff(self, volume=100):
-        params = {
-            "volume": volume
-        }
-        url = f"{self._baseUrl}/music_off.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+    async def massage_toggle(self) -> Any:
+        url = f"{self._base_url}/massage_toggle.cgi"
+        return await self._fetch(url)
 
-    def musicOn(self, volume=100):
-        # min: 0, max: 100, interval: 1
-        params = {
-            "volume": volume
-        }
-        url = f"{self._baseUrl}/music_on.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN)
+    async def music_off(self, volume: int = 100) -> Any:
+        params = {"volume": volume}
+        url = f"{self._base_url}/music_off.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def powercleanCheck(self):
-        url = f"{self._baseUrl}/powerclean_check.cgi"
-        return self.fetch(url)
+    async def music_on(self, volume: int = 100) -> Any:
+        params = {"volume": volume}
+        url = f"{self._base_url}/music_on.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def rainOff(self, value):
-        url = f"{self._baseUrl}/rain_off.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def powerclean_check(self) -> Any:
+        url = f"{self._base_url}/powerclean_check.cgi"
+        return await self._fetch(url)
 
-    def rainOn(self, mode, color, effect):
-        # min: 0, max: 100, interval: 1
-        params = {
-            "mode": mode,
-            "color": color,
-            "effect": effect
-        }
-        url = f"{self._baseUrl}/rain_on.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def rain_off(self) -> Any:
+        url = f"{self._base_url}/rain_off.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def removeModule(self, module):
-        params = {
-            "module": module
-        }
+    async def rain_on(
+        self,
+        *,
+        color: int | None = None,
+        effect: int | None = None,
+    ) -> Any:
+        if (color is None) == (effect is None):
+            raise ValueError("Provide exactly one of 'color' or 'effect'")
 
-        url = f"{self._baseUrl}/remove_module.cgi"
-        return self.fetch(url, params)
+        if color is not None:
+            params: dict[str, Any] = {"mode": 1, "color": color}
+        else:
+            params = {"mode": 2, "effect": effect}
 
-    def resetDefault(self):
-        url = f"{self._baseUrl}/reset_default.cgi"
-        return self.fetch(url)
+        url = f"{self._base_url}/rain_on.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def resetFactory(self):
-        url = f"{self._baseUrl}/reset_factory.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+    async def remove_module(self, module: int) -> Any:
+        params = {"module": module}
+        url = f"{self._base_url}/remove_module.cgi"
+        return await self._fetch(url, params)
 
-    def resetUsers(self):
-        url = f"{self._baseUrl}/reset_users.cgi"
-        return self.fetch(url)
+    async def reset_default(self) -> Any:
+        url = f"{self._base_url}/reset_default.cgi"
+        return await self._fetch(url)
 
-    def saveDT(self):
-        url = f"{self._baseUrl}/saveDT.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN)
+    async def reset_controller_faults(self) -> Any:
+        url = f"{self._base_url}/reset_cfault.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def saveUI(self, index):
-        params = {
-            "index": index
-        }
+    async def reset_factory(self) -> Any:
+        url = f"{self._base_url}/reset_factory.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-        url = f"{self._baseUrl}/saveUI.cgi"
-        return self.fetch(url, params)
+    async def reset_konnect_faults(self) -> Any:
+        url = f"{self._base_url}/reset_kfault.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def saveVariable(self, index, value, **kwargs):
-        params = {
-            "index": index,
-            "value": value
-        }
+    async def reset_users(self) -> Any:
+        url = f"{self._base_url}/reset_users.cgi"
+        return await self._fetch(url)
 
-        url = f"{self._baseUrl}/save_variable.cgi"
-        return self.fetch(url, {**kwargs, **params}, CONTENT_TYPE_TEXT_PLAIN)
+    async def save_default(self) -> Any:
+        url = f"{self._base_url}/save_default.cgi"
+        return await self._fetch(url)
 
-    def setDevice(self, value):
-        url = f"{self._baseUrl}/set_device.cgi"
-        return self.fetch(url, {"value": value})
+    async def save_dt(self) -> Any:
+        url = f"{self._base_url}/saveDT.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def steamOff(self, value):
-        url = f"{self._baseUrl}/steam_off.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def save_ui(self, index: int) -> Any:
+        params = {"index": index}
+        url = f"{self._base_url}/saveUI.cgi"
+        return await self._fetch(url, params)
 
-    def steamOn(self, temp=110, time=10):
-        params = {
-            "temp": temp,
-            "time": time
-        }
-        url = f"{self._baseUrl}/steam_on.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def save_variable(self, index: int, value: int, **kwargs: Any) -> Any:
+        params = {"index": index, "value": value}
+        url = f"{self._base_url}/save_variable.cgi"
+        return await self._fetch(url, {**kwargs, **params}, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def stopUser(self):
-        url = f"{self._baseUrl}/stop_user.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def set_device(self, value: str) -> Any:
+        url = f"{self._base_url}/set_device.cgi"
+        return await self._fetch(url, {"value": value})
 
-    def stopShower(self):
-        url = f"{self._baseUrl}/stop_shower.cgi"
-        return self.fetch(url, None, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def steam_off(self) -> Any:
+        url = f"{self._base_url}/steam_off.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def startUser(self, user=1):
-        params = {
-            "user": user
-        }
+    async def steam_on(self, temp: int = 110, time: int = 10) -> Any:
+        params = {"temp": temp, "time": time}
+        url = f"{self._base_url}/steam_on.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-        url = f"{self._baseUrl}/start_user.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
+    async def stop_user(self) -> Any:
+        url = f"{self._base_url}/stop_user.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def systemInfo(self):
-        url = f"{self._baseUrl}/system_info.cgi"
-        return self.fetch(url)
+    async def stop_shower(self) -> Any:
+        url = f"{self._base_url}/stop_shower.cgi"
+        return await self._fetch(url, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def values(self):
-        url = f"{self._baseUrl}/values.cgi"
-        return self.fetch(url)
+    async def start_user(self, user: int = 1) -> Any:
+        params = {"user": user}
+        url = f"{self._base_url}/start_user.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def quickShower(self,
-                    valve_num=1,
-                    valve1_outlet=1,
-                    valve1_massage=0,
-                    valve1_temp=100,
-                    valve2_outlet=0,
-                    valve2_massage=0,
-                    valve2_temp=100):
+    async def swap_valves(self) -> Any:
+        url = f"{self._base_url}/swapvalves.cgi"
+        return await self._fetch(url)
 
+    async def system_info(self) -> Any:
+        url = f"{self._base_url}/system_info.cgi"
+        return await self._fetch(url)
+
+    async def upload_firmware(self, file_path: str | Path) -> Any:
+        url = f"{self._base_url}/fileupload.cgi"
+        return await self._post_file(url, file_path)
+
+    async def values(self) -> Any:
+        url = f"{self._base_url}/values.cgi"
+        return await self._fetch(url)
+
+    async def quick_shower(
+        self,
+        valve_num: int = 1,
+        valve1_outlet: int = 1,
+        valve1_massage: int = 0,
+        valve1_temp: int = 100,
+        valve2_outlet: int = 0,
+        valve2_massage: int = 0,
+        valve2_temp: int = 100,
+    ) -> Any:
         params = {
             "valve_num": valve_num,
             "valve1_outlet": valve1_outlet,
@@ -192,26 +219,98 @@ class Kohler:
             "valve1_temp": valve1_temp,
             "valve2_outlet": valve2_outlet,
             "valve2_massage": valve2_massage,
-            "valve2_temp": valve2_temp
+            "valve2_temp": valve2_temp,
         }
-        url = f"{self._baseUrl}/quick_shower.cgi"
-        return self.fetch(url, params, CONTENT_TYPE_TEXT_PLAIN, 3)
+        url = f"{self._base_url}/quick_shower.cgi"
+        return await self._fetch(url, params, content_type=CONTENT_TYPE_TEXT_PLAIN)
 
-    def fetch(self, url, params=None, contentType=CONTENT_TYPE_JSON, timeout=0.25):
+    async def _fetch(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        content_type: str = CONTENT_TYPE_JSON,
+        timeout: float | None = None,
+    ) -> Any:
+        """Send an async request to the Kohler device using raw asyncio streams."""
+        timeout_val = timeout if timeout is not None else self.timeout
+        path = urllib.parse.urlparse(url).path
+        if params:
+            query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+            path = f"{path}?{query}"
+
+        req = f"GET {path} HTTP/1.1\r\nHost: {self._host}\r\nConnection: close\r\n\r\n"
+        _LOGGER.debug("Sending request: GET %s", path)
+
         try:
-            response = requests.get(url, params=params, timeout=timeout)
-        except ConnectionError as ex:
-            if len(ex.args) < 1:
-                raise
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self._host, 80), timeout=timeout_val
+            )
+            writer.write(req.encode())
+            await writer.drain()
 
-            #HACK: gist.github.com/niemyjski/6ba88dcdca7e76172c58530bac66eada
-            responseText = ex.args[0].args[1].line
-            if contentType == CONTENT_TYPE_JSON:
-                return json.loads(responseText)
+            data = await reader.read()
+            writer.close()
+            await writer.wait_closed()
 
-            return responseText
-        else:
-            if contentType == CONTENT_TYPE_JSON:
-                return response.json()
+            response_text = data.decode("utf-8", errors="replace")
+            _LOGGER.debug("Received response (%d bytes)", len(data))
+        except (TimeoutError, OSError) as ex:
+            _LOGGER.error("Connection failed while fetching %s: %s", path, ex)
+            raise KohlerError(f"Connection failed: {ex}") from ex
 
-            return response.text
+        if content_type == CONTENT_TYPE_JSON:
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError as ex:
+                _LOGGER.error("Failed to parse JSON response: %s\nData: %s", ex, response_text)
+                raise KohlerError(
+                    f"Failed to parse JSON response: {ex}\nData: {response_text}"
+                ) from ex
+        return response_text
+
+    async def _post_file(self, url: str, file_path: str | Path) -> Any:
+        """Upload a file to the Kohler device asynchronously via POST."""
+        path = Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Firmware file not found: {path}")
+
+        url_path = urllib.parse.urlparse(url).path
+        boundary = "----KohlerPythonBoundary"
+        _LOGGER.debug("Uploading file %s to %s", path, url_path)
+
+        with open(path, "rb") as f:
+            file_data = f.read()
+
+        body = (
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="myfile"; filename="{path.name}"\r\n'
+                f"Content-Type: application/octet-stream\r\n\r\n"
+            ).encode()
+            + file_data
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
+
+        req = (
+            f"POST {url_path} HTTP/1.1\r\n"
+            f"Host: {self._host}\r\n"
+            f"Content-Type: multipart/form-data; boundary={boundary}\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            f"Connection: close\r\n\r\n"
+        ).encode() + body
+
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self._host, 80), timeout=120
+            )
+            writer.write(req)
+            await writer.drain()
+
+            data = await reader.read()
+            writer.close()
+            await writer.wait_closed()
+            _LOGGER.debug("File upload complete (%d bytes received)", len(data))
+            return data.decode("utf-8", errors="replace")
+        except (TimeoutError, OSError) as ex:
+            _LOGGER.error("Upload failed: %s", ex)
+            raise KohlerError(f"Upload failed: {ex}") from ex
