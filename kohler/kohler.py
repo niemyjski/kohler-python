@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import secrets
 import urllib.parse
 from pathlib import Path
 from typing import Any
-
-__version__ = "0.1.0"
 
 _LOGGER = logging.getLogger(__name__)
 
 CONTENT_TYPE_JSON = "application/json"
 CONTENT_TYPE_TEXT_PLAIN = "text/plain"
+UPLOAD_CHUNK_SIZE = 64 * 1024
 
 
 class KohlerError(Exception):
@@ -194,9 +195,13 @@ class Kohler:
         url = f"{self._base_url}/system_info.cgi"
         return await self._fetch(url)
 
-    async def upload_firmware(self, file_path: str | Path) -> Any:
+    async def upload_firmware(
+        self,
+        file_path: str | Path,
+        timeout: float | None = None,
+    ) -> Any:
         url = f"{self._base_url}/fileupload.cgi"
-        return await self._post_file(url, file_path)
+        return await self._post_file(url, file_path, timeout=timeout)
 
     async def values(self) -> Any:
         url = f"{self._base_url}/values.cgi"
@@ -234,29 +239,30 @@ class Kohler:
         """Send an async request to the Kohler device using raw asyncio streams."""
         timeout_val = timeout if timeout is not None else self.timeout
         path = urllib.parse.urlparse(url).path
-        if params:
+        if params is not None:
             query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
-            path = f"{path}?{query}"
+            if query:
+                path = f"{path}?{query}"
 
         req = f"GET {path} HTTP/1.1\r\nHost: {self._host}\r\nConnection: close\r\n\r\n"
         _LOGGER.debug("Sending request: GET %s", path)
 
+        writer: asyncio.StreamWriter | None = None
         try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self._host, 80), timeout=timeout_val
-            )
-            writer.write(req.encode())
-            await writer.drain()
-
-            data = await reader.read()
-            writer.close()
-            await writer.wait_closed()
-
-            response_text = data.decode("utf-8", errors="replace")
+            async with asyncio.timeout(timeout_val):
+                reader, writer = await asyncio.open_connection(self._host, 80)
+                writer.write(req.encode())
+                await writer.drain()
+                data = await reader.read()
+            response_body = self._extract_response_body(data)
+            response_text = response_body.decode("utf-8", errors="replace")
             _LOGGER.debug("Received response (%d bytes)", len(data))
         except (TimeoutError, OSError) as ex:
             _LOGGER.error("Connection failed while fetching %s: %s", path, ex)
             raise KohlerError(f"Connection failed: {ex}") from ex
+        finally:
+            if writer is not None:
+                await self._close_writer(writer)
 
         if content_type == CONTENT_TYPE_JSON:
             try:
@@ -268,49 +274,145 @@ class Kohler:
                 ) from ex
         return response_text
 
-    async def _post_file(self, url: str, file_path: str | Path) -> Any:
+    async def _post_file(
+        self,
+        url: str,
+        file_path: str | Path,
+        timeout: float | None = None,
+    ) -> Any:
         """Upload a file to the Kohler device asynchronously via POST."""
         path = Path(file_path)
         if not path.is_file():
             raise FileNotFoundError(f"Firmware file not found: {path}")
 
+        timeout_val = timeout if timeout is not None else max(self.timeout, 120.0)
         url_path = urllib.parse.urlparse(url).path
-        boundary = "----KohlerPythonBoundary"
+        boundary = f"----KohlerPythonBoundary{secrets.token_hex(16)}"
         _LOGGER.debug("Uploading file %s to %s", path, url_path)
 
-        with open(path, "rb") as f:
-            file_data = f.read()
-
-        body = (
-            (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="myfile"; filename="{path.name}"\r\n'
-                f"Content-Type: application/octet-stream\r\n\r\n"
-            ).encode()
-            + file_data
-            + f"\r\n--{boundary}--\r\n".encode()
+        file_header = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="myfile"; filename="{path.name}"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
         )
+        file_footer = f"\r\n--{boundary}--\r\n"
+        content_length = len(file_header.encode()) + path.stat().st_size + len(file_footer.encode())
 
         req = (
             f"POST {url_path} HTTP/1.1\r\n"
             f"Host: {self._host}\r\n"
             f"Content-Type: multipart/form-data; boundary={boundary}\r\n"
-            f"Content-Length: {len(body)}\r\n"
+            f"Content-Length: {content_length}\r\n"
             f"Connection: close\r\n\r\n"
-        ).encode() + body
+        ).encode()
 
+        writer: asyncio.StreamWriter | None = None
         try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self._host, 80), timeout=120
-            )
-            writer.write(req)
-            await writer.drain()
-
-            data = await reader.read()
-            writer.close()
-            await writer.wait_closed()
+            async with asyncio.timeout(timeout_val):
+                reader, writer = await asyncio.open_connection(self._host, 80)
+                writer.write(req)
+                writer.write(file_header.encode())
+                with path.open("rb") as firmware_file:
+                    while chunk := firmware_file.read(UPLOAD_CHUNK_SIZE):
+                        writer.write(chunk)
+                        await writer.drain()
+                writer.write(file_footer.encode())
+                await writer.drain()
+                data = await reader.read()
             _LOGGER.debug("File upload complete (%d bytes received)", len(data))
-            return data.decode("utf-8", errors="replace")
+            response_body = self._extract_response_body(data)
+            return response_body.decode("utf-8", errors="replace")
         except (TimeoutError, OSError) as ex:
             _LOGGER.error("Upload failed: %s", ex)
             raise KohlerError(f"Upload failed: {ex}") from ex
+        finally:
+            if writer is not None:
+                await self._close_writer(writer)
+
+    async def _close_writer(self, writer: asyncio.StreamWriter) -> None:
+        writer.close()
+        with contextlib.suppress(OSError, TimeoutError):
+            await asyncio.wait_for(writer.wait_closed(), timeout=1)
+
+    def _extract_response_body(self, data: bytes) -> bytes:
+        if not data.startswith(b"HTTP/"):
+            return data
+
+        try:
+            header_block, body = data.split(b"\r\n\r\n", 1)
+        except ValueError as ex:
+            raise KohlerError("Malformed HTTP response: missing header separator") from ex
+
+        header_lines = header_block.decode("iso-8859-1").split("\r\n")
+        status_line = header_lines[0]
+        status_parts = status_line.split(" ", 2)
+        if len(status_parts) < 2 or not status_parts[1].isdigit():
+            raise KohlerError(f"Malformed HTTP status line: {status_line}")
+
+        status_code = int(status_parts[1])
+        reason = status_parts[2] if len(status_parts) == 3 else ""
+        headers: dict[str, str] = {}
+        for header_line in header_lines[1:]:
+            if not header_line:
+                continue
+            if ":" not in header_line:
+                raise KohlerError(f"Malformed HTTP header: {header_line}")
+            name, value = header_line.split(":", 1)
+            headers[name.strip().lower()] = value.strip()
+
+        transfer_encoding = headers.get("transfer-encoding", "").lower()
+        if "chunked" in transfer_encoding:
+            body = self._decode_chunked_body(body)
+        elif "content-length" in headers:
+            try:
+                content_length = int(headers["content-length"])
+            except ValueError as ex:
+                raise KohlerError(
+                    f"Malformed Content-Length header: {headers['content-length']}"
+                ) from ex
+            if len(body) < content_length:
+                raise KohlerError(
+                    "Incomplete HTTP response body: "
+                    f"expected {content_length} bytes, got {len(body)}"
+                )
+            body = body[:content_length]
+
+        if not 200 <= status_code < 300:
+            status_text = f"HTTP {status_code}" if not reason else f"HTTP {status_code} {reason}"
+            body_text = body.decode("utf-8", errors="replace").strip()
+            if body_text:
+                raise KohlerError(f"{status_text}: {body_text}")
+            raise KohlerError(status_text)
+
+        return body
+
+    def _decode_chunked_body(self, body: bytes) -> bytes:
+        decoded = bytearray()
+        offset = 0
+
+        while True:
+            line_end = body.find(b"\r\n", offset)
+            if line_end == -1:
+                raise KohlerError("Malformed chunked response: missing chunk size terminator")
+
+            chunk_size_line = body[offset:line_end]
+            chunk_size_text = chunk_size_line.split(b";", 1)[0].decode("ascii")
+            try:
+                chunk_size = int(chunk_size_text, 16)
+            except ValueError as ex:
+                raise KohlerError(
+                    f"Malformed chunked response: invalid chunk size {chunk_size_text!r}"
+                ) from ex
+
+            offset = line_end + 2
+            if chunk_size == 0:
+                return bytes(decoded)
+
+            chunk_end = offset + chunk_size
+            if len(body) < chunk_end + 2:
+                raise KohlerError("Malformed chunked response: truncated chunk body")
+
+            decoded.extend(body[offset:chunk_end])
+            if body[chunk_end : chunk_end + 2] != b"\r\n":
+                raise KohlerError("Malformed chunked response: missing chunk terminator")
+            offset = chunk_end + 2

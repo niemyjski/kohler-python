@@ -45,11 +45,11 @@ async def main():
     # Shower control
     await kohler.quick_shower()
     await kohler.stop_shower()
-    
+
     # Lights
     await kohler.light_on(module=1, intensity=75)
     await kohler.light_off(module=1)
-
+    
     # Music
     await kohler.music_on(volume=80)
     await kohler.music_off()
@@ -129,7 +129,7 @@ asyncio.run(main())
 | `reset_factory()` | Reset to factory settings. |
 | `reset_users()` | Reset all user settings. |
 | `bt_disconnect()` | Disconnect Bluetooth. |
-| `upload_firmware(file_path)` | Upload firmware file (multipart POST). |
+| `upload_firmware(file_path, timeout=None)` | Upload firmware file (multipart POST). |
 
 ### Diagnostics
 
@@ -145,14 +145,18 @@ asyncio.run(main())
 The library raises `KohlerError` when communication with the device fails unexpectedly:
 
 ```python
+import asyncio
 from kohler import Kohler, KohlerError
 
-kohler = Kohler(kohler_host="192.168.1.50")
+async def main():
+    kohler = Kohler(kohler_host="192.168.1.50")
 
-try:
-    kohler.system_info()
-except KohlerError as e:
-    print(f"Device communication error: {e}")
+    try:
+        await kohler.system_info()
+    except KohlerError as e:
+        print(f"Device communication error: {e}")
+
+asyncio.run(main())
 ```
 
 ## Contributing

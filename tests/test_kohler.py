@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,6 +19,31 @@ from kohler import Kohler, KohlerError
 async def kohler() -> Kohler:
     """Create a Kohler client instance for testing."""
     return Kohler(kohler_host="192.168.1.50")
+
+
+def build_http_response(
+    body: bytes,
+    *,
+    status: int = 200,
+    reason: str = "OK",
+    headers: dict[str, str] | None = None,
+) -> bytes:
+    response_headers = {"Content-Length": str(len(body))}
+    if headers is not None:
+        response_headers.update(headers)
+
+    header_lines = "".join(f"{name}: {value}\r\n" for name, value in response_headers.items())
+    return f"HTTP/1.1 {status} {reason}\r\n{header_lines}\r\n".encode() + body
+
+
+def build_chunked_http_response(body: bytes) -> bytes:
+    chunk_size = format(len(body), "x")
+    return (
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+        + f"{chunk_size}\r\n".encode()
+        + body
+        + b"\r\n0\r\n\r\n"
+    )
 
 
 class TestInit:
@@ -180,27 +205,107 @@ class TestUploadFirmware:
             mock_post.return_value = "Upload OK"
             result = await kohler.upload_firmware(fw_file)
             assert result == "Upload OK"
-            mock_post.assert_called_once_with("http://192.168.1.50/fileupload.cgi", fw_file)
+            mock_post.assert_called_once_with(
+                "http://192.168.1.50/fileupload.cgi",
+                fw_file,
+                timeout=None,
+            )
+
+    @pytest.mark.asyncio
+    async def test_async_upload_supports_custom_timeout(
+        self, kohler: Kohler, tmp_path: Path
+    ) -> None:
+        fw_file = tmp_path / "firmware.bin"
+        fw_file.write_bytes(b"\x00\x01\x02")
+        with patch.object(Kohler, "_post_file") as mock_post:
+            mock_post.return_value = "Upload OK"
+            await kohler.upload_firmware(fw_file, timeout=45)
+            mock_post.assert_called_once_with(
+                "http://192.168.1.50/fileupload.cgi",
+                fw_file,
+                timeout=45,
+            )
+
+    @pytest.mark.asyncio
+    async def test_post_file_streams_multipart_body(
+        self, kohler: Kohler, tmp_path: Path
+    ) -> None:
+        fw_file = tmp_path / "firmware.bin"
+        fw_file.write_bytes(b"\x00\x01\x02")
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(
+            return_value=build_http_response(
+                b"Upload OK",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+
+        with (
+            patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock) as mock_open,
+            patch("kohler.kohler.secrets.token_hex", return_value="abc123"),
+        ):
+            mock_open.return_value = (mock_reader, mock_writer)
+
+            result = await kohler._post_file(
+                "http://192.168.1.50/fileupload.cgi",
+                fw_file,
+                timeout=45,
+            )
+
+        assert result == "Upload OK"
+
+        writes = [call.args[0] for call in mock_writer.write.call_args_list]
+        assert writes[0].startswith(b"POST /fileupload.cgi HTTP/1.1\r\n")
+        assert b"boundary=----KohlerPythonBoundaryabc123" in writes[0]
+        assert b'filename="firmware.bin"' in writes[1]
+        assert writes[2] == b"\x00\x01\x02"
+        assert writes[3] == b"\r\n------KohlerPythonBoundaryabc123--\r\n"
+
+    @pytest.mark.asyncio
+    async def test_post_file_raises_on_http_error_status(
+        self, kohler: Kohler, tmp_path: Path
+    ) -> None:
+        fw_file = tmp_path / "firmware.bin"
+        fw_file.write_bytes(b"\x00\x01\x02")
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(
+            return_value=build_http_response(
+                b"error",
+                status=500,
+                reason="Internal Server Error",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+
+        with patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock) as mock_open:
+            mock_open.return_value = (mock_reader, mock_writer)
+
+            with pytest.raises(KohlerError, match="HTTP 500 Internal Server Error: error"):
+                await kohler._post_file("http://192.168.1.50/fileupload.cgi", fw_file, timeout=45)
 
 
 class TestTransport:
     """Test the raw socket / asyncio streams transport implementations."""
 
     @pytest.mark.asyncio
-    @patch("kohler.kohler.asyncio.open_connection")
-    async def test_fetch_json(self, mock_open: MagicMock, kohler: Kohler) -> None:
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_json(self, mock_open: AsyncMock, kohler: Kohler) -> None:
         mock_reader = MagicMock()
         mock_writer = MagicMock()
-
-        async def mock_read():
-            return b'{"status": "ok"}'
-
-        async def mock_dummy():
-            pass
-
-        mock_reader.read = mock_read
-        mock_writer.drain = mock_dummy
-        mock_writer.wait_closed = mock_dummy
+        mock_reader.read = AsyncMock(
+            return_value=build_http_response(
+                b'{"status": "ok"}',
+                headers={"Content-Type": "application/json"},
+            )
+        )
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
 
         mock_open.return_value = (mock_reader, mock_writer)
 
@@ -211,8 +316,104 @@ class TestTransport:
         assert b"GET /test.cgi?p=1 HTTP/1.1" in req_bytes
 
     @pytest.mark.asyncio
-    @patch("kohler.kohler.asyncio.open_connection")
-    async def test_fetch_timeout(self, mock_open: MagicMock, kohler: Kohler) -> None:
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_json_handles_raw_body_response(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(return_value=b'{"status": "ok"}')
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        result = await kohler._fetch("http://192.168.1.50/test.cgi")
+
+        assert result == {"status": "ok"}
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_omits_empty_query_string(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(return_value=b'{"status": "ok"}')
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        await kohler._fetch("http://192.168.1.50/test.cgi", {"p": None})
+
+        req_bytes = mock_writer.write.call_args[0][0]
+        assert b"GET /test.cgi HTTP/1.1" in req_bytes
+        assert b"GET /test.cgi? HTTP/1.1" not in req_bytes
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_strips_http_headers_for_text_responses(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(
+            return_value=build_http_response(
+                b"OK",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        result = await kohler._fetch(
+            "http://192.168.1.50/test.cgi",
+            content_type="text/plain",
+        )
+
+        assert result == "OK"
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_handles_chunked_http_response(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(return_value=build_chunked_http_response(b'{"status": "ok"}'))
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        result = await kohler._fetch("http://192.168.1.50/test.cgi")
+
+        assert result == {"status": "ok"}
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_raises_on_http_error_status(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(
+            return_value=build_http_response(
+                b"bad request",
+                status=400,
+                reason="Bad Request",
+                headers={"Content-Type": "text/plain"},
+            )
+        )
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        with pytest.raises(KohlerError, match="HTTP 400 Bad Request: bad request"):
+            await kohler._fetch("http://192.168.1.50/test.cgi", content_type="text/plain")
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_timeout(self, mock_open: AsyncMock, kohler: Kohler) -> None:
         mock_open.side_effect = TimeoutError()
         with pytest.raises(KohlerError, match="Connection failed"):
             await kohler._fetch("http://192.168.1.50/test")
