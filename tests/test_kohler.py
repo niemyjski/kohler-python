@@ -46,15 +46,39 @@ ENDPOINTS = [
     ("konnect_error_logs", {}, "/kerror_logs.cgi", None, {"content_type": "text/plain"}),
     ("languages", {}, "/languages.cgi", None, {}),
     ("light_off", {"module": 1}, "/light_off.cgi", {"module": 1}, {"content_type": "text/plain"}),
-    ("light_on", {"module": 2, "intensity": 50}, "/light_on.cgi", {"module": 2, "intensity": 50}, {"content_type": "text/plain"}),
-    ("light_module", {"module": 1, "intensity": 80}, "/light_module.cgi", {"module": 1, "intensity": 80}, {"content_type": "text/plain"}),
+    (
+        "light_on",
+        {"module": 2, "intensity": 50},
+        "/light_on.cgi",
+        {"module": 2, "intensity": 50},
+        {"content_type": "text/plain"},
+    ),
+    (
+        "light_module",
+        {"module": 1, "intensity": 80},
+        "/light_module.cgi",
+        {"module": 1, "intensity": 80},
+        {"content_type": "text/plain"},
+    ),
     ("massage_toggle", {}, "/massage_toggle.cgi", None, {}),
     ("music_off", {"volume": 0}, "/music_off.cgi", {"volume": 0}, {"content_type": "text/plain"}),
     ("music_on", {"volume": 80}, "/music_on.cgi", {"volume": 80}, {"content_type": "text/plain"}),
     ("powerclean_check", {}, "/powerclean_check.cgi", None, {}),
     ("rain_off", {}, "/rain_off.cgi", None, {"content_type": "text/plain"}),
-    ("rain_on", {"color": 120}, "/rain_on.cgi", {"mode": 1, "color": 120}, {"content_type": "text/plain"}),
-    ("rain_on", {"effect": 3}, "/rain_on.cgi", {"mode": 2, "effect": 3}, {"content_type": "text/plain"}),
+    (
+        "rain_on",
+        {"color": 120},
+        "/rain_on.cgi",
+        {"mode": 1, "color": 120},
+        {"content_type": "text/plain"},
+    ),
+    (
+        "rain_on",
+        {"effect": 3},
+        "/rain_on.cgi",
+        {"mode": 2, "effect": 3},
+        {"content_type": "text/plain"},
+    ),
     ("remove_module", {"module": 1}, "/remove_module.cgi", {"module": 1}, {}),
     ("reset_default", {}, "/reset_default.cgi", None, {}),
     ("reset_controller_faults", {}, "/reset_cfault.cgi", None, {"content_type": "text/plain"}),
@@ -64,25 +88,70 @@ ENDPOINTS = [
     ("save_default", {}, "/save_default.cgi", None, {}),
     ("save_dt", {}, "/saveDT.cgi", None, {"content_type": "text/plain"}),
     ("save_ui", {"index": 1}, "/saveUI.cgi", {"index": 1}, {}),
-    ("save_variable", {"index": 1, "value": 2, "extra": "data"}, "/save_variable.cgi", {"index": 1, "value": 2, "extra": "data"}, {"content_type": "text/plain"}),
+    (
+        "save_variable",
+        {"index": 1, "value": 2, "extra": "data"},
+        "/save_variable.cgi",
+        {"index": 1, "value": 2, "extra": "data"},
+        {"content_type": "text/plain"},
+    ),
     ("set_device", {"value": "test"}, "/set_device.cgi", {"value": "test"}, {}),
     ("steam_off", {}, "/steam_off.cgi", None, {"content_type": "text/plain"}),
-    ("steam_on", {"temp": 105, "time": 15}, "/steam_on.cgi", {"temp": 105, "time": 15}, {"content_type": "text/plain"}),
+    (
+        "steam_on",
+        {"temp": 105, "time": 15},
+        "/steam_on.cgi",
+        {"temp": 105, "time": 15},
+        {"content_type": "text/plain"},
+    ),
     ("stop_user", {}, "/stop_user.cgi", None, {"content_type": "text/plain"}),
     ("stop_shower", {}, "/stop_shower.cgi", None, {"content_type": "text/plain"}),
     ("start_user", {"user": 2}, "/start_user.cgi", {"user": 2}, {"content_type": "text/plain"}),
     ("swap_valves", {}, "/swapvalves.cgi", None, {}),
     ("system_info", {}, "/system_info.cgi", None, {}),
     ("values", {}, "/values.cgi", None, {}),
-    ("quick_shower", {"valve_num": 1, "valve1_outlet": 2, "valve1_massage": 0, "valve1_temp": 100, "valve2_outlet": 0, "valve2_massage": 0, "valve2_temp": 100}, "/quick_shower.cgi", {"valve_num": 1, "valve1_outlet": 2, "valve1_massage": 0, "valve1_temp": 100, "valve2_outlet": 0, "valve2_massage": 0, "valve2_temp": 100}, {"content_type": "text/plain"})
+    (
+        "quick_shower",
+        {
+            "valve_num": 1,
+            "valve1_outlet": 2,
+            "valve1_massage": 0,
+            "valve1_temp": 100,
+            "valve2_outlet": 0,
+            "valve2_massage": 0,
+            "valve2_temp": 100,
+        },
+        "/quick_shower.cgi",
+        {
+            "valve_num": 1,
+            "valve1_outlet": 2,
+            "valve1_massage": 0,
+            "valve1_temp": 100,
+            "valve2_outlet": 0,
+            "valve2_massage": 0,
+            "valve2_temp": 100,
+        },
+        {"content_type": "text/plain"},
+    ),
 ]
+
 
 class TestEndpoints:
     """Parametrized tests for all standard endpoints."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("method, kwargs, expected_path, expected_params, expected_kwargs", ENDPOINTS)
-    async def test_endpoints(self, kohler: Kohler, method: str, kwargs: dict[str, Any], expected_path: str, expected_params: dict[str, Any] | None, expected_kwargs: dict[str, Any]) -> None:
+    @pytest.mark.parametrize(
+        "method, kwargs, expected_path, expected_params, expected_kwargs", ENDPOINTS
+    )
+    async def test_endpoints(
+        self,
+        kohler: Kohler,
+        method: str,
+        kwargs: dict[str, Any],
+        expected_path: str,
+        expected_params: dict[str, Any] | None,
+        expected_kwargs: dict[str, Any],
+    ) -> None:
         with patch.object(Kohler, "_fetch") as mock_fetch:
             mock_fetch.return_value = "OK"
             result = await getattr(kohler, method)(**kwargs)

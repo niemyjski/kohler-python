@@ -243,8 +243,7 @@ class Kohler:
 
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self._host, 80),
-                timeout=timeout_val
+                asyncio.open_connection(self._host, 80), timeout=timeout_val
             )
             writer.write(req.encode())
             await writer.drain()
@@ -283,10 +282,14 @@ class Kohler:
             file_data = f.read()
 
         body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="myfile"; filename="{path.name}"\r\n'
-            f"Content-Type: application/octet-stream\r\n\r\n"
-        ).encode() + file_data + f"\r\n--{boundary}--\r\n".encode()
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="myfile"; filename="{path.name}"\r\n'
+                f"Content-Type: application/octet-stream\r\n\r\n"
+            ).encode()
+            + file_data
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
 
         req = (
             f"POST {url_path} HTTP/1.1\r\n"
@@ -298,8 +301,7 @@ class Kohler:
 
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self._host, 80),
-                timeout=120
+                asyncio.open_connection(self._host, 80), timeout=120
             )
             writer.write(req)
             await writer.drain()
