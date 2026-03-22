@@ -227,9 +227,7 @@ class TestUploadFirmware:
             )
 
     @pytest.mark.asyncio
-    async def test_post_file_streams_multipart_body(
-        self, kohler: Kohler, tmp_path: Path
-    ) -> None:
+    async def test_post_file_streams_multipart_body(self, kohler: Kohler, tmp_path: Path) -> None:
         fw_file = tmp_path / "firmware.bin"
         fw_file.write_bytes(b"\x00\x01\x02")
         mock_reader = MagicMock()

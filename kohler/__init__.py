@@ -15,7 +15,7 @@ def _resolve_version() -> str:
         try:
             with pyproject_path.open("rb") as pyproject_file:
                 project = tomllib.load(pyproject_file)["project"]
-        except (FileNotFoundError, KeyError, tomllib.TOMLDecodeError):
+        except FileNotFoundError, KeyError, tomllib.TOMLDecodeError:
             return "0+unknown"
         return str(project.get("version", "0+unknown"))
 
