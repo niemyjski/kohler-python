@@ -39,9 +39,10 @@ pip install -e ".[dev]"
 import asyncio
 from kohler import Kohler
 
+
 async def main():
     kohler = Kohler(kohler_host="192.168.1.50")
-    
+
     # Shower control
     await kohler.quick_shower()
     await kohler.stop_shower()
@@ -49,7 +50,7 @@ async def main():
     # Lights
     await kohler.light_on(module=1, intensity=75)
     await kohler.light_off(module=1)
-    
+
     # Music
     await kohler.music_on(volume=80)
     await kohler.music_off()
@@ -61,6 +62,7 @@ async def main():
     # Chromatherapy rain
     await kohler.rain_on(color=120)
     await kohler.rain_off()
+
 
 asyncio.run(main())
 ```
@@ -148,6 +150,7 @@ The library raises `KohlerError` when communication with the device fails unexpe
 import asyncio
 from kohler import Kohler, KohlerError
 
+
 async def main():
     kohler = Kohler(kohler_host="192.168.1.50")
 
@@ -155,6 +158,7 @@ async def main():
         await kohler.system_info()
     except KohlerError as e:
         print(f"Device communication error: {e}")
+
 
 asyncio.run(main())
 ```
