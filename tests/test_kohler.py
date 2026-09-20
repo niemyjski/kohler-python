@@ -3,6 +3,7 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -415,6 +416,54 @@ class TestTransport:
         mock_open.side_effect = TimeoutError()
         with pytest.raises(KohlerError, match="Connection failed"):
             await kohler._fetch("http://192.168.1.50/test")
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_rejects_incomplete_http_payload(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        mock_reader.read = AsyncMock(return_value=b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nok")
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        with pytest.raises(KohlerError, match="Incomplete HTTP response body"):
+            await kohler._fetch("http://192.168.1.50/test")
+
+        mock_writer.close.assert_called_once_with()
+        mock_writer.wait_closed.assert_awaited_once_with()
+
+    @pytest.mark.asyncio
+    @patch("kohler.kohler.asyncio.open_connection", new_callable=AsyncMock)
+    async def test_fetch_propagates_cancellation_and_closes_writer(
+        self, mock_open: AsyncMock, kohler: Kohler
+    ) -> None:
+        mock_reader = MagicMock()
+        mock_writer = MagicMock()
+        read_started = asyncio.Event()
+        read_forever = asyncio.Event()
+
+        async def read_response() -> bytes:
+            read_started.set()
+            await read_forever.wait()
+            return b""
+
+        mock_reader.read = AsyncMock(side_effect=read_response)
+        mock_writer.drain = AsyncMock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_open.return_value = (mock_reader, mock_writer)
+
+        request = asyncio.create_task(kohler._fetch("http://192.168.1.50/test"))
+        await read_started.wait()
+        request.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+        mock_writer.close.assert_called_once_with()
+        mock_writer.wait_closed.assert_awaited_once_with()
 
 
 class TestExports:
