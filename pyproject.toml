@@ -8,7 +8,7 @@ version = "0.1.1"
 description = "Kohler DTV+ Python API module"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 authors = [
     { name = "Blake Niemyjski", email = "bniemyjski@gmail.com" },
 ]
@@ -18,9 +18,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
     "Typing :: Typed",
@@ -42,7 +39,7 @@ Repository = "https://github.com/niemyjski/kohler-python"
 Issues = "https://github.com/niemyjski/kohler-python/issues"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
@@ -65,7 +62,7 @@ known-first-party = ["kohler"]
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
